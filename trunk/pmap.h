@@ -11,6 +11,12 @@
 #define E820_ARM   1   // address Range Memory
 #define E820_ARR   2   // address Range Reserved
 
+// flags describing the status of a page frame
+#define PG_reserved  1  // the page frame is reserved for kernel code or is unusable
+#define PG_property  2  // the property field of the page descriptor stores meaningful data
+#define PG_locked    4  // the page is locked
+#define PG_dirty     8  // the page has been modified
+
 struct e820map {
 	int nr_map;
 	struct {
@@ -35,10 +41,17 @@ struct Page {
 typedef struct Page page_t;
 
 extern pde_t * boot_pgdir;
-void init_phypages(void);
+extern struct Page * pages;
+extern struct e820map * e820_memmap;
+// get the descriptor of the page frame for address addr
+// notice that it does not work for address at the end of 4G space
+#define page_frame(addr) (&pages[PPN(addr)])
+
 pte_t *get_pte(pde_t * pgdir, vaddr_t va, int create);
 int insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm);
 void i386_vm_init(void);
 void enable_paging(void);
 char * alloc_page();
+#define SET_PAGE_RESERVED(page) (page)->flags | PG_reserved
+#define CLEAR_PAGE_RESERVED(page) (page)->flags & (~PG_reserved)
 #endif

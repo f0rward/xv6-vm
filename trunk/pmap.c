@@ -8,11 +8,10 @@
 #include "spinlock.h"
 
 spinlock_t phy_mem_lock;
-struct Page * pages; 	// Physical Page descriptor array
-struct e820map * e820_memmap;
-uint npages;		// number of available pages
-paddr_t boot_cr3;		// physical address of boot time page directory
-pde_t * boot_pgdir;	// virtual address of boot time page directory
+struct Page * pages;    // Physical Page descriptor array
+paddr_t boot_cr3;    // physical address of boot time page directory
+pde_t * boot_pgdir;    // virtual address of boot time page directory
+struct Page * pages;    // all page descriptors 
 //static uchar * boot_freemem = 0; // pointer to next byte of free mem
 
 /*
@@ -52,18 +51,6 @@ boot_map_segment(pde_t * pgdir, paddr_t pa, vaddr_t la, uint size, uint perm)
 			panic("error at boot map segment\n");
 		}
 	}
-}
-
-void
-init_phypages(void)
-{
-	int i;
-	e820_memmap = (struct e820map *)(0x8000);
-	for (i = 0; i < e820_memmap->nr_map; i ++) {
-		if (e820_memmap->map[i].type == E820_ARM)
-			npages += e820_memmap->map[i].size / PAGE;
-	}
-	cprintf("total available memory pages : %d\n", npages);
 }
 
 // Get a single page frame
@@ -137,6 +124,7 @@ i386_vm_init(void)
 	// create initial page directory , no need to acquire spin lock because
 	// no other processors are running
 	pgdir = (pde_t *)alloc_page();
+        cprintf("pgdir address %x\n",(uint)(pgdir));
 	memset(pgdir, 0, PAGE);
 	boot_pgdir = pgdir;
 	boot_cr3 = (uint)pgdir;
@@ -187,6 +175,7 @@ get_pte(pde_t * pgdir, vaddr_t va, int create)
 	if (!(*pde & PTE_P)) {
 		if (create) {
 			// allocate a page
+//                        cprintf("get pte addr %x, PDX %x, PDE %x, pgdir address %x\n", va, PDX(va), *pde, (uint)pgdir);
 			pte = (pte_t *)alloc_page();
 			if (pte == NULL) return NULL;
 			assert(!((uint)pte & 0xfff), "assert : not in page boundary\n");
@@ -195,6 +184,7 @@ get_pte(pde_t * pgdir, vaddr_t va, int create)
 			memset(pte,0,PAGE);
 			// set flags
 			*pde = (uint)pte | PTE_P | PTE_W | PTE_U;
+//                        cprintf("pde update %x, adddr %x\n", *pde, (uint)pde);
 		}
 		else {
 			// no pde exists, return NULL
