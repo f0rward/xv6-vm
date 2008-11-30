@@ -89,7 +89,7 @@ setupsegs(struct proc *p)
     c->gdt[SEG_UCODE] = SEG(STA_X|STA_R, (uint)p->mem, p->sz-1, DPL_USER);
     c->gdt[SEG_UDATA] = SEG(STA_W, (uint)p->mem, p->sz-1, DPL_USER);
     c->cr3 = (paddr_t)(p->vm.pgdir);
-    cprintf("process %s load cr3 %x\n",p->name, c->cr3);
+    //cprintf("process %s load cr3 %x\n",p->name, c->cr3);
   } 
   else {
     c->gdt[SEG_UCODE] = SEG_NULL;

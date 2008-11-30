@@ -2,29 +2,37 @@
 
 free_area_t free_area[MAX_ORDER];
 struct Page * mem_map;
-int FreeAreaSize[MAX_ORDER] = {1,2,4,8,16,32,64,128,256,512,1024};
+const int FreeAreaSize[MAX_ORDER] = {1,2,4,8,16,32,64,128,256,512,1024};
 
 // check if pointer page indicates the first page frame of a block of order_size pages
 // if so , return 1, else return 0
-int page_is_buddy(struct Page * page, int order)
+int
+page_is_buddy(struct Page * page, int order)
 {
 	if (page->property == order)
 		return 1;
 	return 0;
 }
 
-void init_memmap(struct Page * base, unsigned long nr)
+void
+init_memmap(struct Page * base, unsigned long nr)
 {
 	int order, size;
+	struct Page * page = base;
 	mem_map = base;
 	while (nr) {
 		for (order = 10; order >=0; order --) {
+			if (nr == FreeAreaSize[order]) {
+				LIST_INSERT_HEAD(&(free_area[order].free_list), page, lru);
+				page->property = order;
+			}
 		}
 	}
 }
 
 // implement the buddy system strategy for freeing page frames
-struct Page * alloc_pages_bulk(int order)
+struct Page *
+alloc_pages_bulk(int order)
 {
 	int isalloc = 0;
 	int current_order, size = 0;
@@ -62,7 +70,8 @@ struct Page * alloc_pages_bulk(int order)
 }
 
 // implement the buddy system strategy for freeing page frames
-void free_pages_bulk(struct Page * page, int order)
+void
+free_pages_bulk(struct Page * page, int order)
 {
 	int size = 1 << order;
 	unsigned long page_idx = page - mem_map, buddy_idx;

@@ -10,6 +10,7 @@
 #include "param.h"
 #include "pmap.h"
 #include "spinlock.h"
+#include "assert.h"
 
 struct spinlock kalloc_lock;
 
@@ -18,6 +19,79 @@ struct run {
   int len; // bytes
 };
 struct run *freelist;
+uint npages;  // number of available pages
+uint dbg = 0;
+char * start;  // start address after kernel
+struct e820map * e820_memmap;
+
+void
+init_pages_list(paddr_t start_addr, uint len, uint32_t flags)
+{
+  paddr_t addr;
+  // page_frame macro does not work for addresses at the end of 4G
+  if (start_addr >= 0xfec00000)
+    return;
+  assert(PGOFF(start_addr) == 0, "error in init_pages_list");
+  for (addr = start_addr; addr < start_addr + len; addr += PAGE) {
+//    cprintf("page descriptor addreee, %x, PPN %x\n", (uint)(page_frame(addr)),PPN(addr));
+    page_frame(addr)->flags = flags;
+  }
+}
+
+void
+init_phypages(void)
+{
+  int i;
+  uint len;
+  paddr_t base;
+  npages = 0;
+  e820_memmap = (struct e820map *)(0x8000);
+
+  for (i = 0; i < e820_memmap->nr_map; i ++) {
+  //  if (e820_memmap->map[i].type == E820_ARM)
+      npages += e820_memmap->map[i].size / PAGE;
+  }
+  
+  cprintf("total available memory pages : %x\n", npages);
+
+  pages = (struct Page *)start;
+  memset(pages, 0, sizeof(struct Page) * npages);
+  start += ROUNDUP(sizeof(struct Page) * npages, PAGE);
+  cprintf("start %x\n",(uint)start);
+
+  for (i = 0; i < e820_memmap->nr_map; i++) {
+    base = (paddr_t)e820_memmap->map[i].addr;
+    base = ROUNDUP(base, PAGE);
+    len = (uint)e820_memmap->map[i].size;
+
+    switch (e820_memmap->map[i].type) {
+      case E820_ARM :
+        if (base + len < (uint) start) {
+          init_pages_list(base, len, PG_reserved);
+          cprintf("reserved for kernel %x, size %x\n", base, len);
+        }
+        else {
+          if (base < (uint)start) {
+            init_pages_list(base, (uint)start - base, PG_reserved);
+            cprintf("reserved for kernel %x, size %x\n", base, (uint)start - base);
+            init_pages_list((paddr_t)start, len + base - (uint)start, 0);
+            cprintf("free memory %x, size %x\n", (paddr_t)start, len + base - (uint)start);
+          }
+          else {
+            init_pages_list(base, len, 0);
+            cprintf("free memory %x, size %x\n", base, len);
+          }
+        }
+        break;
+      case E820_ARR :
+        init_pages_list(base, len, PG_reserved);
+        cprintf("reserved memmory %x, size %x\n", base, len);
+        break;
+      default:
+        break;
+    }
+  }
+}
 
 // Initialize free list of physical pages.
 // This code cheats by just considering one megabyte of
@@ -28,8 +102,7 @@ kinit(void)
 {
   extern int end;
   uint mem;
-  char *start, *baseaddr, *endaddr;
-  extern struct e820map * e820_memmap;
+  char *baseaddr, *endaddr;
   int i;
 
   initlock(&kalloc_lock, "kalloc");
@@ -38,7 +111,7 @@ kinit(void)
 //  mem = 256; // assume computer has 256 pages of RAM
 //  cprintf("mem = %d\n", mem * PAGE);
   init_phypages();
-//  e820_memmap = (struct e820map *)(0x8000);
+
   for (i = 0; i < e820_memmap->nr_map; i ++) {
 	  if (e820_memmap->map[i].type == E820_ARM) {
 		  mem = e820_memmap->map[i].size;
@@ -57,8 +130,8 @@ kinit(void)
 		  // insert free memory
 		  // decide whether kernel is inside the range
 		  if (start >= baseaddr && start < baseaddr + mem) {
-			  cprintf("free mem: %x, %x\n", start,mem);
-			  kfree(start, mem);
+			  cprintf("free mem: %x, %x\n", start,baseaddr + mem - start);
+			  kfree(start, baseaddr + mem - start);
 		  }
 		  else {
 			  cprintf("free mem: %x, %x\n", baseaddr,mem);
@@ -66,6 +139,7 @@ kinit(void)
 		  }
 	  }
   }
+  cprintf("free_list %x\n",(uint)freelist);
   i386_vm_init();
 //  kfree(start, mem * PAGE);
 }
