@@ -124,7 +124,6 @@ i386_vm_init(void)
 	// create initial page directory , no need to acquire spin lock because
 	// no other processors are running
 	pgdir = (pde_t *)alloc_page();
-        cprintf("pgdir address %x\n",(uint)(pgdir));
 	memset(pgdir, 0, PAGE);
 	boot_pgdir = pgdir;
 	boot_cr3 = (uint)pgdir;

@@ -9,4 +9,6 @@ typedef struct free_area {
 	unsigned long nr_free;
 } free_area_t;
 
+void init_memmap(struct Page * base, unsigned long nr);
+
 #endif

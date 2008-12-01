@@ -9,6 +9,7 @@
 #include "defs.h"
 #include "param.h"
 #include "pmap.h"
+#include "buddy.h"
 #include "spinlock.h"
 #include "assert.h"
 
@@ -75,10 +76,12 @@ init_phypages(void)
             init_pages_list(base, (uint)start - base, PG_reserved);
             cprintf("reserved for kernel %x, size %x\n", base, (uint)start - base);
             init_pages_list((paddr_t)start, len + base - (uint)start, 0);
+            init_memmap(page_frame((paddr_t)start), (len + base - (uint)start) / PAGE);
             cprintf("free memory %x, size %x\n", (paddr_t)start, len + base - (uint)start);
           }
           else {
             init_pages_list(base, len, 0);
+            init_memmap(page_frame(base), len / PAGE);
             cprintf("free memory %x, size %x\n", base, len);
           }
         }
@@ -139,7 +142,6 @@ kinit(void)
 		  }
 	  }
   }
-  cprintf("free_list %x\n",(uint)freelist);
   i386_vm_init();
 //  kfree(start, mem * PAGE);
 }
