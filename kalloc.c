@@ -115,7 +115,7 @@ kinit(void)
 //  cprintf("mem = %d\n", mem * PAGE);
   init_phypages();
 
-  for (i = 0; i < e820_memmap->nr_map; i ++) {
+/*  for (i = 0; i < e820_memmap->nr_map; i ++) {
 	  if (e820_memmap->map[i].type == E820_ARM) {
 		  mem = e820_memmap->map[i].size;
 		  baseaddr = (char *)(uint)e820_memmap->map[i].addr;
@@ -141,7 +141,8 @@ kinit(void)
 			  kfree(baseaddr, mem);
 		  }
 	  }
-  }
+  }*/
+
   i386_vm_init();
 //  kfree(start, mem * PAGE);
 }
@@ -150,6 +151,21 @@ kinit(void)
 // which normally should have been returned by a
 // call to kalloc(len).  (The exception is when
 // initializing the allocator; see kinit above.)
+void
+kfree(char *v, int len)
+{
+  int nr;
+  if (len <= 0 || len % PAGE)
+    panic("kfree");
+  nr = len / PAGE;
+  if (nr > 1024)
+    panic("kree : exceed maximum pages that kfree can handle\n");
+  acquire(&kalloc_lock);
+  __free_pages(page_frame(v), nr);
+  release(&kalloc_lock);
+}
+
+/*
 void
 kfree(char *v, int len)
 {
@@ -162,6 +178,7 @@ kfree(char *v, int len)
   memset(v, 1, len);
 
   acquire(&kalloc_lock);
+  _kfree(v,len);
   p = (struct run*)v;
   pend = (struct run*)(v + len);
   for(rp=&freelist; (r=*rp) != 0 && r <= pend; rp=&r->next){
@@ -190,11 +207,30 @@ kfree(char *v, int len)
 
  out:
   release(&kalloc_lock);
-}
+}*/
 
 // Allocate n bytes of physical memory.
 // Returns a kernel-segment pointer.
 // Returns 0 if the memory cannot be allocated.
+char *
+kalloc(int n)
+{
+  int nr;
+  struct Page * p;
+  if (n <= 0 || n % PAGE)
+    panic("kalloc");
+  nr = n / PAGE;
+  if (nr > 1024)
+    panic("kalloc : exceed maximum pages that kalloc can handle\n");
+  acquire(&kalloc_lock);
+  p = __alloc_pages(nr);
+  release(&kalloc_lock);
+  if (p)
+    return (char *)page_addr(p);
+  else
+    return 0;
+}
+/*
 char*
 kalloc(int n)
 {
@@ -205,6 +241,7 @@ kalloc(int n)
     panic("kalloc");
 
   acquire(&kalloc_lock);
+  _kalloc(n);
   for(rp=&freelist; (r=*rp) != 0; rp=&r->next){
     if(r->len == n){
       *rp = r->next;
@@ -222,4 +259,4 @@ kalloc(int n)
 
   cprintf("kalloc: out of memory\n");
   return 0;
-}
+}*/

@@ -28,11 +28,27 @@ init_memmap(struct Page * base, unsigned long nr)
         free_area[order].nr_free ++;
         page->property = order;
         nr -= FreeAreaSize[order];
+        page += FreeAreaSize[order];
         break;
       }
     }
   }
-  test_buddy();
+//  test_buddy();
+}
+
+struct Page *
+__alloc_pages(int nr)
+{
+  int i;
+  struct Page * p;
+  for (i = 0; i < MAX_ORDER; i++) {
+    if (nr <= FreeAreaSize[i]) {
+      p = alloc_pages_bulk(i);
+//      cprintf("kalloc %x : order %d;  ",p - pages, i);
+      return p;
+    }
+  }
+  return NULL;
 }
 
 // implement the buddy system strategy for freeing page frames
@@ -56,6 +72,7 @@ alloc_pages_bulk(int order)
     return NULL;
   else {
     page = LIST_FIRST(&(free_area[current_order].free_list));
+//    cprintf("current order : %x,remove %x\n",current_order,page - pages);
     LIST_REMOVE(page, lru);
     page->property = 0;
     free_area[current_order].nr_free --;
@@ -66,12 +83,26 @@ alloc_pages_bulk(int order)
     current_order --;
     size >>= 1;
     buddy = page + size;
+//    cprintf("insert order : %x, insert %x\n",current_order, buddy - pages);
     LIST_INSERT_HEAD(&(free_area[current_order].free_list), buddy, lru);
     buddy->property = current_order;
     free_area[current_order].nr_free ++;
   }
 
   return page;
+}
+
+void
+__free_pages(struct Page * page, int nr)
+{
+  int i;
+  for (i = 0; i < MAX_ORDER; i++) {
+    if (nr <= FreeAreaSize[i]) {
+//      cprintf("kfree %x : order %d\n",page - pages, i);
+      free_pages_bulk(page, i);
+      return;
+    }
+  }
 }
 
 // implement the buddy system strategy for freeing page frames

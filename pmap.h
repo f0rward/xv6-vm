@@ -46,6 +46,7 @@ extern struct e820map * e820_memmap;
 // get the descriptor of the page frame for address addr
 // notice that it does not work for address at the end of 4G space
 #define page_frame(addr) (&pages[PPN(addr)])
+#define page_addr(p) ((paddr_t)(p - pages) << PTXSHIFT)
 
 pte_t *get_pte(pde_t * pgdir, vaddr_t va, int create);
 int insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm);
