@@ -11,4 +11,10 @@ typedef struct free_area {
 
 void init_memmap(struct Page * base, unsigned long nr);
 
+extern struct Page * mem_map;
+struct Page * __alloc_pages(int nr);
+void __free_pages(struct Page * page, int nr);
+struct Page * alloc_pages_bulk(int order);
+void free_pages_bulk(struct Page * page, int order);
+
 #endif
