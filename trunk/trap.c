@@ -6,6 +6,8 @@
 #include "x86.h"
 #include "traps.h"
 #include "spinlock.h"
+#include "pmap.h"
+#include "memlayout.h"
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
@@ -34,9 +36,12 @@ idtinit(void)
 void
 trap(struct trapframe *tf)
 {
+  if (cp!=NULL)
+  dbmsg("trap frame %x\n",(uint)cp->tf);
   if(tf->trapno == T_SYSCALL){
     if(cp->killed)
       exit();
+//    cprintf("syscall %x, trap frame : %x\n",tf->eax, (uint)tf);
     cp->tf = tf;
     syscall();
     if(cp->killed)
@@ -45,6 +50,7 @@ trap(struct trapframe *tf)
   }
 
   switch(tf->trapno){
+  cprintf("interrupt %x, trap frame : %x\n",tf->trapno, (uint)tf);
   case IRQ_OFFSET + IRQ_TIMER:
     if(cpu() == 0){
       acquire(&tickslock);
@@ -71,8 +77,8 @@ trap(struct trapframe *tf)
   default:
     if(cp == 0 || (tf->cs&3) == 0){
       // In kernel, it must be our mistake.
-      cprintf("unexpected trap %d from cpu %d eip %x\n",
-              tf->trapno, cpu(), tf->eip);
+      cprintf("unexpected trap %d from cpu %d eip %x esp %x cr2 %x \n",
+              tf->trapno, cpu(), tf->eip, tf->esp, rcr2());
       panic("trap");
     }
     // In user space, assume process misbehaved.

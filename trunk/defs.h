@@ -148,4 +148,9 @@ extern struct spinlock tickslock;
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+#ifdef DEBUG
+#define dbmsg(...) cprintf(__VA_ARGS__);
+#else
+#define dbmsg(...) {}
+#endif
 #endif

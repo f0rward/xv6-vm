@@ -7,4 +7,5 @@
 // virtual address space into that 4 Meg region starting at VPT.
 #define VPT      0x7fc00000  // virtual page table 
 #define UVPT     0x7f800000  // virtual page table for user
+#define KSTACKTOP 0xfeb00000  // kernel stack top
 #endif

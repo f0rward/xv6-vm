@@ -18,6 +18,7 @@ exec(char *path, char **argv)
 
   if((ip = namei(path)) == 0)
     return -1;
+//  cprintf("argv : %x ip %x argvadd %x\n",(uint)argv[0],(uint)ip, (uint)(&argv));
   ilock(ip);
 
   // Compute memory size of new process.
@@ -41,8 +42,9 @@ exec(char *path, char **argv)
   
   // Arguments.
   arglen = 0;
-  for(argc=0; argv[argc]; argc++)
+  for(argc=0; argv[argc]; argc++) {
     arglen += strlen(argv[argc]) + 1;
+  }
   arglen = (arglen+3) & ~3;
   sz += arglen + 4*(argc+1);
 

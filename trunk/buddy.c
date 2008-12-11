@@ -1,4 +1,6 @@
+#define DEBUG
 #include "buddy.h"
+#include "defs.h"
 
 free_area_t free_area[MAX_ORDER];
 struct Page * mem_map;
@@ -10,7 +12,7 @@ void test_buddy();
 int
 page_is_buddy(struct Page * page, int order)
 {
-  if (page->property == order)
+  if (PageProperty(page) && page->property == order && !PageReserved(page))
     return 1;
   return 0;
 }
@@ -18,9 +20,13 @@ page_is_buddy(struct Page * page, int order)
 void
 init_memmap(struct Page * base, unsigned long nr)
 {
-  int order;
+  int i,order;
   struct Page * page = base;
   mem_map = base;
+  for (i = 0; i < MAX_ORDER; i++) {
+    if (!LIST_EMPTY(&(free_area[i].free_list)))
+      panic("error");
+  }
   while (nr) {
     for (order = 10; order >=0; order --) {
       if (nr >= FreeAreaSize[order]) {
@@ -44,7 +50,7 @@ __alloc_pages(int nr)
   for (i = 0; i < MAX_ORDER; i++) {
     if (nr <= FreeAreaSize[i]) {
       p = alloc_pages_bulk(i);
-//      cprintf("kalloc %x : order %d;  ",p - pages, i);
+      dbmsg("cpu %x kalloc %x : order %d;\n",cpu(), p - pages, i);
       return p;
     }
   }
@@ -75,6 +81,7 @@ alloc_pages_bulk(int order)
 //    cprintf("current order : %x,remove %x\n",current_order,page - pages);
     LIST_REMOVE(page, lru);
     page->property = 0;
+    ClearPageProperty(page);
     free_area[current_order].nr_free --;
   }
 
@@ -86,6 +93,7 @@ alloc_pages_bulk(int order)
 //    cprintf("insert order : %x, insert %x\n",current_order, buddy - pages);
     LIST_INSERT_HEAD(&(free_area[current_order].free_list), buddy, lru);
     buddy->property = current_order;
+    SetPageProperty(buddy);
     free_area[current_order].nr_free ++;
   }
 
@@ -98,7 +106,7 @@ __free_pages(struct Page * page, int nr)
   int i;
   for (i = 0; i < MAX_ORDER; i++) {
     if (nr <= FreeAreaSize[i]) {
-//      cprintf("kfree %x : order %d\n",page - pages, i);
+      dbmsg("kfree %x : order %d\n",page - pages, i);
       free_pages_bulk(page, i);
       return;
     }
@@ -125,12 +133,14 @@ free_pages_bulk(struct Page * page, int order)
     LIST_REMOVE(buddy, lru);
     free_area[order].nr_free --;
     buddy->property = 0;
+    ClearPageProperty(buddy);
     page_idx &= buddy_idx;
     order ++;
   }
-
   coalesced = &mem_map[page_idx];
+  dbmsg("free order %x, page %x\n", order, coalesced - pages);
   coalesced->property = order;
+  SetPageProperty(coalesced);
   LIST_INSERT_HEAD(&(free_area[order].free_list), coalesced, lru);
   free_area[order].nr_free ++;
 }

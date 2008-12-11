@@ -14,29 +14,6 @@ pde_t * boot_pgdir;    // virtual address of boot time page directory
 struct Page * pages;    // all page descriptors 
 //static uchar * boot_freemem = 0; // pointer to next byte of free mem
 
-/*
- * no need to use this function
-void *
-boot_allocmem(uint n, uint align)
-{
-	extern int end;
-	void * alloc_chunk = 0;
-	uchar * save;
-	if (boot_freemem == 0)
-		boot_freemem = (uchar *)&end;
-	save = boot_freemem;
-	boot_freemem = ROUNDUP(boot_freemem, align);
-	alloc_chunk = (void *)boot_freemem;
-	boot_freemem = (uchar *)((uint)boot_freemem + n);
-	if ((uint)boot_freemem < PAGE * npages)
-		return alloc_chunk;
-	else
-		boot_freemem = save;
-	return NULL;
-}
- *
-: */
-
 static void check_boot_pgdir();
 
 static void
@@ -52,6 +29,29 @@ boot_map_segment(pde_t * pgdir, paddr_t pa, vaddr_t la, uint size, uint perm)
 		}
 	}
 }
+
+// Map the segment with physical address pa at linear addresss la
+// 
+// RETURNS
+// 0 on success
+// -E_MAP_EXIST, if there is already a page mapped at 'va'
+// -E_NO_MEM, if the page table couldn't be allocated
+// -E_NOT_AT_PGBOUND, if pa or va or size is not at page boundary
+int
+map_segment(pde_t * pgdir, paddr_t pa, vaddr_t la, uint size, uint perm)
+{
+  int ret = 0;
+  uint i = 0;
+  if (size & 0xfff)
+    return -E_NOT_AT_PGBOUND;
+  for (; i < size; i += PAGE) {
+    if ((ret = insert_page(pgdir, pa + i, la + i, perm)) < 0) {
+      return ret;
+    }
+  }
+  return 0;
+}
+
 
 // Get a single page frame
 char *
@@ -195,12 +195,12 @@ get_pte(pde_t * pgdir, vaddr_t va, int create)
 	return pte;
 }
 
-static paddr_t
-check_va2pa(vaddr_t va)
+paddr_t
+check_va2pa(pde_t * pgdir, vaddr_t va)
 {
-	if (!(boot_pgdir[PDX(va)] & PTE_P))
+	if (!(pgdir[PDX(va)] & PTE_P))
 		return -1;
-	pte_t * pte = (pte_t *)PTE_ADDR(boot_pgdir[PDX(va)]);
+	pte_t * pte = (pte_t *)PTE_ADDR(pgdir[PDX(va)]);
 	if (!(pte[PTX(va)] & PTE_P))
 		return -2;
 	return PTE_ADDR(pte[PTX(va)]) | PGOFF(va); 
@@ -211,7 +211,7 @@ check_boot_pgdir()
 {
 	uint i = 0x100000, ret = 0;
 	for (;i < 0x200000; i += PAGE / 2) {
-		ret = check_va2pa(i);
+		ret = check_va2pa(boot_pgdir, i);
 		if (ret == -1) {
 			cprintf("pde not exist %x\n",i);
 			continue;
