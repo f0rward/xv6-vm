@@ -37,11 +37,10 @@ void
 trap(struct trapframe *tf)
 {
   if (cp!=NULL)
-  dbmsg("trap frame %x\n",(uint)cp->tf);
+  dbmsg("trap frame from %x %x\n",tf->eip, tf->trapno);
   if(tf->trapno == T_SYSCALL){
     if(cp->killed)
       exit();
-//    cprintf("syscall %x, trap frame : %x\n",tf->eax, (uint)tf);
     cp->tf = tf;
     syscall();
     if(cp->killed)
@@ -82,8 +81,8 @@ trap(struct trapframe *tf)
       panic("trap");
     }
     // In user space, assume process misbehaved.
-    cprintf("pid %d %s: trap %d err %d on cpu %d eip %x -- kill proc\n",
-            cp->pid, cp->name, tf->trapno, tf->err, cpu(), tf->eip);
+    cprintf("pid %d %s: trap %d err %d on cpu %d eip %x cr2 %x -- kill proc\n",
+            cp->pid, cp->name, tf->trapno, tf->err, cpu(), tf->eip, rcr2());
     cp->killed = 1;
   }
 

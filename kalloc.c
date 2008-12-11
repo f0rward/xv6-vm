@@ -104,9 +104,9 @@ void
 kinit(void)
 {
   extern int end;
-  uint mem;
-  char *baseaddr, *endaddr;
-  int i;
+  //uint mem;
+  //char *baseaddr, *endaddr;
+  //int i;
 
   initlock(&kalloc_lock, "kalloc");
   start = (char*) &end;

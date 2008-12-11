@@ -32,7 +32,7 @@ typedef LIST_ENTRY(Page) page_list_entry_t;
 
 struct Page {
 	uint32_t flags;  // flags for page descriptors
-	atomic_t mapcount;  // number of page table entries that refer to the page frame
+	uint32_t mapcount;  // number of page table entries that refer to the page frame
 	uint32_t property;  // when the page is free , this field is used by the buddy system
 	uint32_t index;
 	page_list_entry_t lru; /* free list link */
@@ -49,11 +49,13 @@ extern struct e820map * e820_memmap;
 #define page_addr(p) ((paddr_t)(p - pages) << PTXSHIFT)
 
 pte_t *get_pte(pde_t * pgdir, vaddr_t va, int create);
-int insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm);
+int insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm, uint kmap);
 void i386_vm_init(void);
 void enable_paging(void);
 char * alloc_page();
 int map_segment(pde_t * pgdir, paddr_t pa, vaddr_t la, uint size, uint perm);
+int remove_page(pde_t * pgdir, vaddr_t va);
+int do_unmap(pde_t * pgdir, vaddr_t va, uint size);
 paddr_t check_va2pa(pde_t * pgdir, vaddr_t va);
 
 #define SET_PAGE_RESERVED(page) ((page)->flags |= PG_reserved)
@@ -62,4 +64,7 @@ paddr_t check_va2pa(pde_t * pgdir, vaddr_t va);
 #define SetPageProperty(page) ((page)->flags |= PG_property)
 #define ClearPageProperty(page) ((page)->flags &= (~PG_property))
 #define PageProperty(page) ((page)->flags & PG_property)
+#define IncPageCount(page) ((page)->mapcount ++)
+#define DecPageCount(page) ((page)->mapcount --)
+#define IsPageMapped(page)  ((page)->mapcount)
 #endif

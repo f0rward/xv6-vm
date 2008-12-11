@@ -1,4 +1,3 @@
-#define DEBUG
 #include "buddy.h"
 #include "defs.h"
 

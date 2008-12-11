@@ -10,7 +10,7 @@ int
 exec(char *path, char **argv)
 {
   char *mem, *s, *last;
-  int i, argc, arglen, len, off;
+  int i, argc, arglen, len, off, ret;
   uint sz, sp, argp;
   struct elfhdr elf;
   struct inode *ip;
@@ -18,7 +18,6 @@ exec(char *path, char **argv)
 
   if((ip = namei(path)) == 0)
     return -1;
-//  cprintf("argv : %x ip %x argvadd %x\n",(uint)argv[0],(uint)ip, (uint)(&argv));
   ilock(ip);
 
   // Compute memory size of new process.
@@ -39,7 +38,7 @@ exec(char *path, char **argv)
       goto bad;
     sz += ph.memsz;
   }
-  
+
   // Arguments.
   arglen = 0;
   for(argc=0; argv[argc]; argc++) {
@@ -53,10 +52,16 @@ exec(char *path, char **argv)
   
   // Allocate program memory.
   sz = (sz+PAGE-1) & ~(PAGE-1);
-  mem = kalloc(sz);
+  ret = 0;
+  if (cp->sz < sz)
+    ret = growproc(sz - cp->sz);
+  if (ret < 0)
+    goto bad;
+  mem = cp->mem;
+/*  mem = kalloc(sz);
   if(mem == 0)
     goto bad;
-  memset(mem, 0, sz);
+  memset(mem, 0, sz); */
 
   // Load program into memory.
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
@@ -101,8 +106,8 @@ exec(char *path, char **argv)
   safestrcpy(cp->name, last, sizeof(cp->name));
 
   // Commit to the new image.
-  kfree(cp->mem, cp->sz);
-  cp->mem = mem;
+//  kfree(cp->mem, cp->sz);
+//  cp->mem = mem;
   cp->sz = sz;
   cp->tf->eip = elf.entry;  // main
   cp->tf->esp = sp;
