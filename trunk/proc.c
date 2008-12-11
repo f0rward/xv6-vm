@@ -53,13 +53,19 @@ growproc(int n)
 {
   char *newmem;
 
-  newmem = kalloc(cp->sz + n);
+  /*newmem = kalloc(cp->sz + n);
   if(newmem == 0)
     return -1;
   memmove(newmem, cp->mem, cp->sz);
   memset(newmem + cp->sz, 0, n);
   kfree(cp->mem, cp->sz);
   cp->mem = newmem;
+  cp->sz += n;*/
+  newmem = kalloc(n);
+  if (newmem == 0)
+    return -1;
+  memset(newmem, 0, n);
+  map_segment(cp->vm.pgdir, (paddr_t)newmem, KERNTOP + cp->sz, n, PTE_P | PTE_W | PTE_U);
   cp->sz += n;
   setupsegs(cp);
   return cp->sz - n;
@@ -86,8 +92,8 @@ setupsegs(struct proc *p)
   c->gdt[SEG_TSS] = SEG16(STS_T32A, (uint)&c->ts, sizeof(c->ts)-1, 0);
   c->gdt[SEG_TSS].s = 0;
   if(p){
-    c->gdt[SEG_UCODE] = SEG(STA_X|STA_R, (uint)p->mem, p->sz-1, DPL_USER);
-    c->gdt[SEG_UDATA] = SEG(STA_W, (uint)p->mem, p->sz-1, DPL_USER);
+    c->gdt[SEG_UCODE] = SEG(STA_X|STA_R, (uint)KERNTOP, p->sz-1, DPL_USER);
+    c->gdt[SEG_UDATA] = SEG(STA_W, (uint)KERNTOP, p->sz-1, DPL_USER);
     c->cr3 = (paddr_t)(p->vm.pgdir);
     dbmsg("process %s load cr3 %x\n",p->name, c->cr3);
   } 
@@ -111,19 +117,12 @@ copyproc(struct proc *p)
 {
   int i,ret;
   struct proc *np;
-  char * kstack;
+  char * kstack, * mem;
   pde_t * pgdir = 0;
 
   // Allocate process.
   if((np = allocproc()) == 0)
     return 0;
-
-  // Allocate kernel stack.
-/*  if((np->kstack = kalloc(KSTACKSIZE)) == 0){
-    np->state = UNUSED;
-    return 0;
-  }
-  np->tf = (struct trapframe*)(np->kstack + KSTACKSIZE) - 1;*/
 
   // Allocate new page directory
   pgdir = (pde_t *)alloc_page();
@@ -142,12 +141,13 @@ copyproc(struct proc *p)
     return 0;
   }
 
+  // Allocate kernel stack.
   np->kstack = (char *)(KSTACKTOP - KSTACKSIZE);
   np->k = kstack;
   // kernel read/write
   ret = map_segment(pgdir, (paddr_t)kstack, (vaddr_t)np->kstack, KSTACKSIZE, PTE_P | PTE_W);
   if (ret < 0)
-    panic("kstack");
+    panic("kstack map error");
   np->tf = (struct trapframe*)(kstack + KSTACKSIZE) - 1;
 
   if(p){  // Copy process state from p.
@@ -155,14 +155,17 @@ copyproc(struct proc *p)
     memmove(np->tf, p->tf, sizeof(*np->tf));
   
     np->sz = p->sz;
-    if((np->mem = kalloc(np->sz)) == 0){
-      kfree(np->kstack, KSTACKSIZE);
+    if((mem = kalloc(np->sz)) == 0){
+      //kfree(np->kstack, KSTACKSIZE);
+      do_unmap(np->vm.pgdir, (vaddr_t)p->kstack, KSTACKSIZE);
       np->kstack = 0;
       np->state = UNUSED;
       np->parent = 0;
       return 0;
     }
-    memmove(np->mem, p->mem, np->sz);
+    memmove(mem, p->mem, np->sz);
+    ret = map_segment(pgdir, (paddr_t)mem, KERNTOP, np->sz, PTE_P | PTE_W | PTE_U);
+    np->mem = (char *)KERNTOP;
 
     for(i = 0; i < NOFILE; i++)
       if(p->ofile[i])
@@ -186,10 +189,11 @@ userinit(void)
 {
   struct proc *p;
   extern uchar _binary_initcode_start[], _binary_initcode_size[];
+  char * mem;
   
   p = copyproc(0);
   p->sz = PAGE;
-  p->mem = kalloc(p->sz);
+  mem = kalloc(p->sz);
   p->cwd = namei("/");
   memset(p->tf, 0, sizeof(*p->tf));
   p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
@@ -201,11 +205,14 @@ userinit(void)
   
   // Make return address readable; needed for some gcc.
   p->tf->esp -= 4;
-  *(uint*)(p->mem + p->tf->esp) = 0xefefefef;
+  *(uint*)(mem + p->tf->esp) = 0xefefefef;
+  dbmsg("init size %x\m", p->sz);
 
   // On entry to user space, start executing at beginning of initcode.S.
   p->tf->eip = 0;
-  memmove(p->mem, _binary_initcode_start, (int)_binary_initcode_size);
+  memmove(mem, _binary_initcode_start, (int)_binary_initcode_size);
+  map_segment(p->vm.pgdir, (paddr_t)mem, KERNTOP, p->sz, PTE_P | PTE_W | PTE_U);
+  p->mem = (char *)KERNTOP;
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->state = RUNNABLE;
   
@@ -260,7 +267,6 @@ scheduler(void)
 //      if (check_va2pa(p->vm.pgdir, 0xfeaff000)<0)
 //        dbmsg("kstack map error");
       swtch(&c->context, &p->context);
-
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->curproc = 0;
@@ -457,8 +463,9 @@ wait(void)
       if(p->parent == cp){
         if(p->state == ZOMBIE){
           // Found one.
-          kfree(p->mem, p->sz);
+          //kfree(p->mem, p->sz);
           //kfree(p->kstack, KSTACKSIZE);
+          do_unmap(p->vm.pgdir, (vaddr_t)p->kstack, KSTACKSIZE);
           pid = p->pid;
           p->state = UNUSED;
           p->pid = 0;

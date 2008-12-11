@@ -6,6 +6,7 @@
 #include "assert.h"
 #include "errorno.h"
 #include "spinlock.h"
+#include "buddy.h"
 
 spinlock_t phy_mem_lock;
 struct Page * pages;    // Physical Page descriptor array
@@ -23,7 +24,7 @@ boot_map_segment(pde_t * pgdir, paddr_t pa, vaddr_t la, uint size, uint perm)
 	uint i = 0;
 	assert(!(size & 0xfff), "size is not a multiple of PAGE\n");
 	for (; i < size; i += PAGE) {
-		if ((ret = insert_page(pgdir, pa + i, la + i, perm)) < 0) {
+		if ((ret = insert_page(pgdir, pa + i, la + i, perm, 1)) < 0) {
 			cprintf("error %d\n",ret);
 			panic("error at boot map segment\n");
 		}
@@ -45,19 +46,32 @@ map_segment(pde_t * pgdir, paddr_t pa, vaddr_t la, uint size, uint perm)
   if (size & 0xfff)
     return -E_NOT_AT_PGBOUND;
   for (; i < size; i += PAGE) {
-    if ((ret = insert_page(pgdir, pa + i, la + i, perm)) < 0) {
+    if ((ret = insert_page(pgdir, pa + i, la + i, perm, 0)) < 0) {
       return ret;
     }
   }
   return 0;
 }
 
+int
+do_unmap(pde_t * pgdir, vaddr_t va, uint size)
+{
+  uint i,ret;
+  if (va & 0xfff || size & 0xfff)
+    panic("do_unmap invalid va or size");
+  for (i = 0; i < size; i += PAGE) {
+    if ((ret = remove_page(pgdir, va)) < 0)
+      return ret;
+    va += PAGE;
+  }
+  return 0;
+}
 
 // Get a single page frame
 char *
 alloc_page()
 {
-	return kalloc(PAGE);
+  return kalloc(PAGE);
 }
 
 // Map the physical page at virtual address 'va'
@@ -70,29 +84,68 @@ alloc_page()
 // -E_NO_MEM, if the page table couldn't be allocated
 // -E_MAP_EXIST, if there is already a page mapped at 'va'
 int
-insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm)
+insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm, uint kmap)
 {
 	if ((pa & 0xfff) || (va & 0xfff))
 		return -E_NOT_AT_PGBOUND;
+
 	acquire(&phy_mem_lock);
 	pte_t * pte = get_pte(pgdir, va, 1);
+
 	if (pte == NULL) {
 		release(&phy_mem_lock);
 		return -E_NO_MEM;
 	}
+
 	if (*pte & PTE_P) {
 		release(&phy_mem_lock);
 		return -E_MAP_EXIST;
 	}
 	*pte = PTE_ADDR(pa) | PTE_P | perm;
+
+        if (!kmap) {
+          IncPageCount(page_frame(pa));
+          dbmsg("inc count %x\n",(page_frame(pa))->mapcount);
+        }
+        
 	release(&phy_mem_lock);
+
 	return 0;
 }
 
+// Remove the mapping at va
+// If the page is not mapped any more , free the page
+// RETURNS:
+// 0 on success
+//
 int
-remove_page()
+remove_page(pde_t * pgdir, vaddr_t va)
 {
-	return 0;
+  pte_t * pte;
+  struct Page * p;
+  if (va & 0xfff)
+    return -E_NOT_AT_PGBOUND;
+  acquire(&phy_mem_lock);
+  pte = get_pte(pgdir, va, 0);
+  if (pte == NULL)
+    return -E_ALREADY_FREE;
+
+  if (*pte & PTE_P) {
+    p = page_frame(PTE_ADDR(*pte));
+    DecPageCount(p);
+    if (!PageReserved(p) && !IsPageMapped(p)) {
+      dbmsg("removing mapping %x at pages %x\n", va, p - pages);
+      __free_pages(p, 1);
+    }
+    *pte = 0;
+  }
+  else {
+    release(&phy_mem_lock);
+    return -E_ALREADY_FREE;
+  }
+
+  release(&phy_mem_lock);
+  return 0;
 }
 
 void
