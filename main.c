@@ -50,6 +50,7 @@ main(void)
 static void
 mpmain(void)
 {
+  extern paddr_t boot_cr3;
   cprintf("cpu%d: mpmain\n", cpu());
   idtinit();
   if(cpu() != mp_bcpu()) {

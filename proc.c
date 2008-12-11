@@ -89,7 +89,7 @@ setupsegs(struct proc *p)
     c->gdt[SEG_UCODE] = SEG(STA_X|STA_R, (uint)p->mem, p->sz-1, DPL_USER);
     c->gdt[SEG_UDATA] = SEG(STA_W, (uint)p->mem, p->sz-1, DPL_USER);
     c->cr3 = (paddr_t)(p->vm.pgdir);
-    //cprintf("process %s load cr3 %x\n",p->name, c->cr3);
+    dbmsg("process %s load cr3 %x\n",p->name, c->cr3);
   } 
   else {
     c->gdt[SEG_UCODE] = SEG_NULL;
@@ -109,8 +109,9 @@ setupsegs(struct proc *p)
 struct proc*
 copyproc(struct proc *p)
 {
-  int i;
+  int i,ret;
   struct proc *np;
+  char * kstack;
   pde_t * pgdir = 0;
 
   // Allocate process.
@@ -118,15 +119,14 @@ copyproc(struct proc *p)
     return 0;
 
   // Allocate kernel stack.
-  if((np->kstack = kalloc(KSTACKSIZE)) == 0){
+/*  if((np->kstack = kalloc(KSTACKSIZE)) == 0){
     np->state = UNUSED;
     return 0;
   }
-  np->tf = (struct trapframe*)(np->kstack + KSTACKSIZE) - 1;
+  np->tf = (struct trapframe*)(np->kstack + KSTACKSIZE) - 1;*/
 
   // Allocate new page directory
   pgdir = (pde_t *)alloc_page();
-//  cprintf("alloc page directory %x\n",(uint)pgdir);
   memset(pgdir, 0 ,PAGE);
   for (i = 0; i < PDX(KERNTOP); i++) {
     pgdir[i] = boot_pgdir[i];  
@@ -135,6 +135,20 @@ copyproc(struct proc *p)
     pgdir[i] = boot_pgdir[i];
   }
   np->vm.pgdir = pgdir;
+
+  if ((kstack = kalloc(KSTACKSIZE)) == 0) {
+    np->state = UNUSED;
+    kfree((char *)pgdir, PAGE);
+    return 0;
+  }
+
+  np->kstack = (char *)(KSTACKTOP - KSTACKSIZE);
+  np->k = kstack;
+  // kernel read/write
+  ret = map_segment(pgdir, (paddr_t)kstack, (vaddr_t)np->kstack, KSTACKSIZE, PTE_P | PTE_W);
+  if (ret < 0)
+    panic("kstack");
+  np->tf = (struct trapframe*)(kstack + KSTACKSIZE) - 1;
 
   if(p){  // Copy process state from p.
     np->parent = p;
@@ -242,11 +256,15 @@ scheduler(void)
       c->curproc = p;
       setupsegs(p);
       p->state = RUNNING;
+      dbmsg("process %x c eip %x, p eip %x\n",i, c->context.eip, p->context.eip);
+//      if (check_va2pa(p->vm.pgdir, 0xfeaff000)<0)
+//        dbmsg("kstack map error");
       swtch(&c->context, &p->context);
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->curproc = 0;
+      dbmsg("return to kernel\n");
       setupsegs(0);
     }
     release(&proc_table_lock);
@@ -268,6 +286,7 @@ sched(void)
   if(cpus[cpu()].ncli != 1)
     panic("sched locks");
 
+  dbmsg("in sched:proc %x c eip %x, p eip %x\n",cp - proc, cp->context.eip, cpus[cpu()].context.eip);
   swtch(&cp->context, &cpus[cpu()].context);
 }
 
@@ -414,6 +433,7 @@ exit(void)
   // Jump into the scheduler, never to return.
   cp->killed = 0;
   cp->state = ZOMBIE;
+  //cprintf("proc %x exit\n",cp - proc);
   sched();
   panic("zombie exit");
 }
@@ -438,7 +458,7 @@ wait(void)
         if(p->state == ZOMBIE){
           // Found one.
           kfree(p->mem, p->sz);
-          kfree(p->kstack, KSTACKSIZE);
+          //kfree(p->kstack, KSTACKSIZE);
           pid = p->pid;
           p->state = UNUSED;
           p->pid = 0;

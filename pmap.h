@@ -53,6 +53,13 @@ int insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm);
 void i386_vm_init(void);
 void enable_paging(void);
 char * alloc_page();
-#define SET_PAGE_RESERVED(page) (page)->flags | PG_reserved
-#define CLEAR_PAGE_RESERVED(page) (page)->flags & (~PG_reserved)
+int map_segment(pde_t * pgdir, paddr_t pa, vaddr_t la, uint size, uint perm);
+paddr_t check_va2pa(pde_t * pgdir, vaddr_t va);
+
+#define SET_PAGE_RESERVED(page) ((page)->flags |= PG_reserved)
+#define CLEAR_PAGE_RESERVED(page) ((page)->flags &= (~PG_reserved))
+#define PageReserved(page) ((page)->flags & PG_reserved)
+#define SetPageProperty(page) ((page)->flags |= PG_property)
+#define ClearPageProperty(page) ((page)->flags &= (~PG_property))
+#define PageProperty(page) ((page)->flags & PG_property)
 #endif

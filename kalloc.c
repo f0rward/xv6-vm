@@ -161,6 +161,7 @@ kfree(char *v, int len)
   if (nr > 1024)
     panic("kree : exceed maximum pages that kfree can handle\n");
   acquire(&kalloc_lock);
+//  cprintf("free %x\n", (uint)v);
   __free_pages(page_frame(v), nr);
   release(&kalloc_lock);
 }
@@ -224,11 +225,14 @@ kalloc(int n)
     panic("kalloc : exceed maximum pages that kalloc can handle\n");
   acquire(&kalloc_lock);
   p = __alloc_pages(nr);
+//  cprintf("alloc : %x\n",page_addr(p));
   release(&kalloc_lock);
   if (p)
     return (char *)page_addr(p);
-  else
+  else {
+    cprintf("kalloc: out of memory\n");
     return 0;
+  }
 }
 /*
 char*
