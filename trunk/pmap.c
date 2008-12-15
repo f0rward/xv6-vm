@@ -67,6 +67,30 @@ do_unmap(pde_t * pgdir, vaddr_t va, uint size)
   return 0;
 }
 
+int
+unmap_userspace(pde_t * pgdir)
+{
+  uint index,pteidx,ret;
+  pte_t * pte;
+  if (!pgdir)
+    return 0;
+  dbmsg("unmap user space\n");
+  for (index = PDX(KERNTOP); index < PDX(0xfec00000); index ++) {
+    if (pgdir[index] & PTE_P) {
+      pte = (pte_t *)PTE_ADDR(pgdir[index]);
+      for (pteidx = 0; pteidx < PTENTRY; pteidx ++) {
+        if (pte[pteidx] & PTE_P) {
+          ret = remove_pte(pgdir, &pte[pteidx]);
+          if (ret < 0)
+            return ret;
+        }
+      }
+      remove_pte(pgdir, pte);
+    }
+  }
+  return 0;
+}
+
 // Get a single page frame
 char *
 alloc_page()
@@ -105,7 +129,6 @@ insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm, uint kmap)
 
         if (!kmap) {
           IncPageCount(page_frame(pa));
-          dbmsg("inc count %x\n",(page_frame(pa))->mapcount);
         }
         
 	release(&phy_mem_lock);
@@ -117,16 +140,28 @@ insert_page(pde_t * pgdir, paddr_t pa, vaddr_t va, uint perm, uint kmap)
 // If the page is not mapped any more , free the page
 // RETURNS:
 // 0 on success
+// -E_ALREADY_FREE if va is already free
 //
 int
 remove_page(pde_t * pgdir, vaddr_t va)
 {
   pte_t * pte;
-  struct Page * p;
   if (va & 0xfff)
     return -E_NOT_AT_PGBOUND;
-  acquire(&phy_mem_lock);
   pte = get_pte(pgdir, va, 0);
+  return remove_pte(pgdir, pte);
+}
+
+// Remove the mapping at pte
+// RETURNS:
+// 0 on success
+// -E_ALREADY_FREE if pte is already free
+// 
+int
+remove_pte(pde_t * pgdir, pte_t * pte)
+{ 
+  struct Page * p;
+  acquire(&phy_mem_lock);
   if (pte == NULL)
     return -E_ALREADY_FREE;
 
@@ -134,7 +169,7 @@ remove_page(pde_t * pgdir, vaddr_t va)
     p = page_frame(PTE_ADDR(*pte));
     DecPageCount(p);
     if (!PageReserved(p) && !IsPageMapped(p)) {
-      dbmsg("removing mapping %x at pages %x\n", va, p - pages);
+      dbmsg("removing mapping at pages %x\n", p - pages);
       __free_pages(p, 1);
     }
     *pte = 0;
@@ -148,6 +183,8 @@ remove_page(pde_t * pgdir, vaddr_t va)
   return 0;
 }
 
+// Enable paging
+// Load cr3 and set PE & PG bit in cr0 register
 void
 enable_paging(void)
 {

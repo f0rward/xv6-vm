@@ -465,7 +465,8 @@ wait(void)
           // Found one.
           //kfree(p->mem, p->sz);
           //kfree(p->kstack, KSTACKSIZE);
-          do_unmap(p->vm.pgdir, (vaddr_t)p->kstack, KSTACKSIZE);
+          //do_unmap(p->vm.pgdir, (vaddr_t)p->kstack, KSTACKSIZE);
+          unmap_userspace(p->vm.pgdir);
           pid = p->pid;
           p->state = UNUSED;
           p->pid = 0;
