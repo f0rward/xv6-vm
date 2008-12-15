@@ -54,7 +54,7 @@ exec(char *path, char **argv)
   sz = (sz+PAGE-1) & ~(PAGE-1);
   ret = 0;
   if (cp->sz < sz)
-    ret = growproc(sz - cp->sz);
+    ret = kgrowproc(sz - cp->sz);
   if (ret < 0)
     goto bad;
   mem = cp->mem;

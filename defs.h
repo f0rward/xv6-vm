@@ -107,6 +107,8 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+int             kgrowproc(int);
+int             pgfault_handler(vaddr_t faultaddr);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

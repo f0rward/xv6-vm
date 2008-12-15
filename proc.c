@@ -49,9 +49,25 @@ allocproc(void)
 // Grow current process's memory by n bytes.
 // Return old size on success, -1 on failure.
 int
-growproc(int n)
+kgrowproc(int n)
 {
   char *newmem;
+  newmem = kalloc(n);
+  if (newmem == 0)
+    return -1;
+  memset(newmem, 0, n);
+  map_segment(cp->vm.pgdir, (paddr_t)newmem, KERNTOP + cp->sz, n, PTE_P | PTE_W | PTE_U);
+  cp->sz += n;
+  setupsegs(cp);
+  return cp->sz - n;
+}
+
+// Grow current process's memory by n bytes.
+// Return old size on success, -1 on failure.
+int
+growproc(int n)
+{
+  //char *newmem;
 
   /*newmem = kalloc(cp->sz + n);
   if(newmem == 0)
@@ -61,14 +77,38 @@ growproc(int n)
   kfree(cp->mem, cp->sz);
   cp->mem = newmem;
   cp->sz += n;*/
-  newmem = kalloc(n);
+  /*newmem = kalloc(n);
   if (newmem == 0)
     return -1;
   memset(newmem, 0, n);
-  map_segment(cp->vm.pgdir, (paddr_t)newmem, KERNTOP + cp->sz, n, PTE_P | PTE_W | PTE_U);
+  map_segment(cp->vm.pgdir, (paddr_t)newmem, KERNTOP + cp->sz, n, PTE_P | PTE_W | PTE_U);*/
   cp->sz += n;
   setupsegs(cp);
   return cp->sz - n;
+}
+
+// User space page fault handler
+// Return 0 on success, -1 on failure
+int
+pgfault_handler(vaddr_t faultaddr)
+{
+  char * newmem;
+  int ret;
+  dbmsg("fault addr %x\n", faultaddr);
+  if (faultaddr < KERNTOP + cp->sz) {
+    newmem = kalloc(PAGE);
+    if (newmem == 0)
+      return -1;
+    memset(newmem, 0, PAGE);
+    ret = map_segment(cp->vm.pgdir, (paddr_t)newmem, PTE_ADDR(faultaddr), PAGE, PTE_P | PTE_W | PTE_U);
+    if (ret < 0) {
+      dbmsg("pg fault handler fail %x\n", -ret);
+      return -1;
+    }
+    return 0;
+  }
+  else
+    return -1;
 }
 
 // Set up CPU's segment descriptors and task state for a given process.
@@ -206,7 +246,7 @@ userinit(void)
   // Make return address readable; needed for some gcc.
   p->tf->esp -= 4;
   *(uint*)(mem + p->tf->esp) = 0xefefefef;
-  dbmsg("init size %x\m", p->sz);
+  dbmsg("init size %x\n", p->sz);
 
   // On entry to user space, start executing at beginning of initcode.S.
   p->tf->eip = 0;
