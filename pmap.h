@@ -56,6 +56,8 @@ char * alloc_page();
 int map_segment(pde_t * pgdir, paddr_t pa, vaddr_t la, uint size, uint perm);
 int remove_page(pde_t * pgdir, vaddr_t va);
 int do_unmap(pde_t * pgdir, vaddr_t va, uint size);
+int remove_pte(pde_t * pgdir, pte_t * pte);
+int unmap_userspace(pde_t * pgdir);
 paddr_t check_va2pa(pde_t * pgdir, vaddr_t va);
 
 #define SET_PAGE_RESERVED(page) ((page)->flags |= PG_reserved)
