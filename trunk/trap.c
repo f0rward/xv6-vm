@@ -36,6 +36,7 @@ idtinit(void)
 void
 trap(struct trapframe *tf)
 {
+  uint cr2;
   if (cp!=NULL)
   dbmsg("trap frame from %x %x\n",tf->eip, tf->trapno);
   if(tf->trapno == T_SYSCALL){
@@ -72,7 +73,17 @@ trap(struct trapframe *tf)
             cpu(), tf->cs, tf->eip);
     lapic_eoi();
     break;
-    
+  case T_PGFLT:
+    cr2 = rcr2();
+    if (cp == 0 || (tf->cs&3) == 0) {
+      cprintf("page fault in kernel from cpu %x eip %x cr2 %x",cpu(), tf->eip, cr2);
+      panic("trap due to kernel page fault");
+    }
+    if (pgfault_handler(cr2) < 0) {
+      cprintf("can not handler user page fault from cpu %x eip %x cr2 %x",cpu(), tf->eip, cr2);
+      panic("trap due to user page fault");
+    }
+    break;
   default:
     if(cp == 0 || (tf->cs&3) == 0){
       // In kernel, it must be our mistake.
